@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tmplsvc-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tmplsvc.labels" . | nindent 4 }}
+data:
+  db_host: {{ .Values.database.host | quote }}
+  db_name: {{ .Values.database.name | quote }}
+  db_user: {{ .Values.database.user | quote }}
+  db_disabletls: {{ .Values.database.disableTls | quote }}
+  tracing_host: {{ .Values.tracing.host | quote }}
+  tracing_probability: {{ .Values.tracing.probability | quote }}
+  auth_issuer: {{ .Values.auth.issuer | quote }}

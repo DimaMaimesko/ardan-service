@@ -1,0 +1,74 @@
+# AGENTS.md
+
+This is a Go web service built on the Ardan Labs "Domain Driven, Data Oriented"
+architecture. Read this file before changing code.
+
+## Architecture
+
+The repository root is the architecture. Imports only point down:
+
+```
+api/         binaries: services/tmplsvc, tooling/admin, tooling/logfmt, API tests
+app/         protocol edge: routes, decode, validate into strong types, auth, errors
+business/    domain rules, strong types, storage behind interfaces, migrations
+foundation/  domain-free building blocks: web, logger, otel, keystore, docker
+zarf/        Docker, Compose, Kind, Helm, dev keys. Never imported by Go code.
+```
+
+- `api → app → business → foundation`. Never import upward. `foundation/*` never
+  imports the project and never logs (it takes a log function instead).
+- Inside `app/` and `business/`: `domain/` holds one package per concept
+  (`userapp`, `userbus`), `sdk/` holds shared support code. `business/types/`
+  holds strong value types usable from any layer.
+- App domain packages never import each other. An app package may call several
+  business packages; that is where domains are combined for a response.
+- Business domain imports go one way only (`productbus` imports `userbus`). Never
+  create a cycle. For the reverse direction use the delegate: the imported domain
+  publishes an action in `event.go`; the importing domain registers a handler.
+
+## Decisions baked into this project
+
+- Auth is in-process: RS256 JWTs signed with keys looked up by `kid`, verified
+  and authorized with embedded OPA policies (`app/sdk/auth/rego`). Tokens come
+  from `GET /v1/auth/token/{kid}` with Basic auth.
+- Converter names: `toBus<Type>` (app → business, parses and validates),
+  `toApp<Type>` (business → app), `toDB<Type>` (business → storage),
+  storage `toBus<Type>` (storage → business, parses again).
+- Configuration comes only from environment variables and flags parsed with
+  `ardanlabs/conf` in `main.go`, prefix `TMPLSVC_`.
+- Migrations are an append-only file (`business/sdk/migrate/sql/migrate.sql`)
+  run by `admin migrate`, never by the service at startup.
+- Tests run against a real Postgres in Docker. Do not mock stores.
+
+## Skills
+
+Project skills live in `.agents/skills`. Load the one that matches the task:
+
+- `add-domain`: new entity or CRUD API, end to end.
+- `layered-architecture-types`: before writing or editing `app/*`,
+  `business/domain/*`, or `.../stores/*db` files.
+- `business-layer-extensions`: adding OTel, logging, metrics, caching or audit
+  around a business domain.
+- `branching-logic-flow`: writing conditional logic.
+- `use-modern-go`: any Go code.
+
+## Rules
+
+- Plan larger changes with the user before writing code. Ask instead of
+  guessing about types, names, routes and auth rules.
+- Wrap every error with `%w` and short lowercase context. Errors are logged once,
+  by the Errors middleware.
+- Every package has a doc comment; every exported identifier has a comment that
+  starts with its name.
+- Handlers return `web.Encoder`; map business errors to `errs` codes in the
+  handler with `errors.Is`.
+- Business models use strong types; JSON models and DB rows use primitives.
+
+## Commands
+
+- `go build ./...` and `go vet ./...`: quick compile check.
+- `make test-only`: all tests (needs Docker).
+- `make test`: tests plus vet, staticcheck and govulncheck.
+- `make fmt`: format the code.
+- `make dev-run`: Kind cluster with Postgres, Tempo, Grafana and the service.
+- `make compose-build-up`: the service and Postgres with Docker Compose.

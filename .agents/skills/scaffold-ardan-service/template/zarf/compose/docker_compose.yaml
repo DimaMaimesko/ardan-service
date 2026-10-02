@@ -1,0 +1,74 @@
+# Quick local run of the whole system without Kubernetes. Tracing is off here;
+# use the Kind environment (make dev-run) for Tempo and Grafana.
+
+services:
+  database:
+    image: postgres:18.6-alpine3.24
+    container_name: tmplsvc-database
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - ./database-data:/var/lib/postgresql/18/docker
+      - ./pg_hba.conf:/etc/pg_hba.conf
+    command: ["-c", "hba_file=/etc/pg_hba.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - tmplsvc-network
+
+  init-migrate-seed:
+    image: localhost/tmplsvc:0.0.1
+    pull_policy: never
+    container_name: tmplsvc-init-migrate-seed
+    entrypoint: ["./admin", "migrate-seed"]
+    environment:
+      - TMPLSVC_DB_USER=postgres
+      - TMPLSVC_DB_PASSWORD=postgres
+      - TMPLSVC_DB_HOST=database
+      - TMPLSVC_DB_DISABLE_TLS=true
+    networks:
+      - tmplsvc-network
+    depends_on:
+      database:
+        condition: service_healthy
+
+  tmplsvc:
+    image: localhost/tmplsvc:0.0.1
+    pull_policy: never
+    container_name: tmplsvc
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "3010:3010"
+    environment:
+      - GOMAXPROCS=2
+      - TMPLSVC_DB_USER=postgres
+      - TMPLSVC_DB_PASSWORD=postgres
+      - TMPLSVC_DB_HOST=database
+      - TMPLSVC_DB_DISABLE_TLS=true
+      - TMPLSVC_TEMPO_HOST=
+      - KUBERNETES_NAMESPACE=compose
+      - KUBERNETES_NAME=tmplsvc
+    volumes:
+      - ../keys:/service/zarf/keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/v1/liveness || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 2
+      start_period: 2s
+    networks:
+      - tmplsvc-network
+    depends_on:
+      init-migrate-seed:
+        condition: service_completed_successfully
+
+networks:
+  tmplsvc-network:
+    driver: bridge
