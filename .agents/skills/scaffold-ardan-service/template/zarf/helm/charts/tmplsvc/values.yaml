@@ -1,0 +1,88 @@
+# Production-ready defaults for the tmplsvc service.
+# Override these with environment-specific values files.
+
+namespace: tmplsvc-system
+
+image:
+  repository: registry.example.com/tmplsvc
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+service:
+  type: ClusterIP
+  ports:
+    http: 3000
+    debug: 3010
+
+strategy:
+  type: RollingUpdate
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"
+
+hostNetwork: false
+terminationGracePeriodSeconds: 60
+
+# Runs before the service starts. Production only migrates; seeding is for dev.
+initContainer:
+  enabled: true
+  command: ["./admin", "migrate"]
+
+readinessProbe:
+  httpGet:
+    path: /v1/readiness
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 2
+
+livenessProbe:
+  httpGet:
+    path: /v1/liveness
+    port: http
+  initialDelaySeconds: 2
+  periodSeconds: 5
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 2
+
+env:
+  GOGC: "off" # Disable GC pacing by heap growth; GOMEMLIMIT drives collection.
+
+database:
+  host: "database-service:5432"
+  name: "postgres"
+  user: "postgres"
+  disableTls: "false"
+
+tracing:
+  # Empty host disables tracing.
+  host: "tempo:4317"
+  probability: "0.05"
+
+auth:
+  issuer: "tmplsvc project"
+  keys:
+    # Secret whose files are <kid>.pem private keys, mounted at
+    # /service/zarf/keys. Production creates this secret outside the chart.
+    secretName: "tmplsvc-keys"
+    # Dev only: when kid and pem are set, the chart creates the secret.
+    # make dev-apply passes them with --set and --set-file.
+    kid: ""
+    pem: ""
+
+# Dev: the chart creates the secret with the password below.
+# Production: the secret "tmplsvc-secret" must already exist with the key
+# db_password, and optionally auth_keys_json for keys provided as JSON.
+secret:
+  create: false
+  password: ""

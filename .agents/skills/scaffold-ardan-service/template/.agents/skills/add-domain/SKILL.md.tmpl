@@ -1,0 +1,73 @@
+---
+name: add-domain
+description: Add a new business domain end to end (migration, business package, store, OTel extension, app package, wiring, tests) following the project's layered architecture. Use when the user asks for a new entity, resource, CRUD API, or domain.
+---
+
+# Add a Domain
+
+Copy the shape of the `product` domain. It is the reference: one business
+package, one Postgres store, one OTel extension, one app package, business tests
+and API tests. Build from the inside out so each step compiles against the one
+before it.
+
+## Before writing code
+
+Agree with the user on:
+
+1. The domain name `<x>` (singular, lowercase: `order`, `invoice`).
+2. The data models for the business layer: `<X>`, `New<X>`, `Update<X>`. Use
+   strong types from `business/types/*`; propose a new type only when none fits
+   (see `layered-architecture-types`).
+3. The routes and which auth rule guards each (`auth.RuleAny`,
+   `auth.RuleAdminOnly`, `auth.RuleUserOnly`, `auth.RuleAdminOrSubject`).
+4. Whether the domain depends on another domain (one-way import) or must react
+   to another domain's events (delegate).
+
+## Steps
+
+1. **Migration.** Append a new `-- Version: X.YY` block to
+   `business/sdk/migrate/sql/migrate.sql`. Never edit an applied block; darwin
+   checks a checksum per version. Add dev rows to `seed.sql` if useful.
+2. **Strong types.** Add any new value types under `business/types/<name>/`
+   with `Parse`, `MustParse`, `String`, `Equal`, `MarshalText`.
+3. **Business package** `business/domain/<x>bus/`:
+   - `model.go`: `<X>`, `New<X>`, `Update<X>` (pointer fields = not provided).
+   - `filter.go`: `QueryFilter` with pointer fields.
+   - `order.go`: `OrderBy*` constants with opaque values and `DefaultOrderBy`.
+   - `<x>bus.go`: sentinel errors, `Storer`, `ExtBusiness`, `Extension`,
+     `Business`, `NewBusiness` (reverse-apply extensions), `NewWithTx`, methods.
+     The business layer assigns IDs and timestamps.
+   - `event.go`: only if other domains must react to this one.
+   - `testutil.go`: `TestNew<X>s` and `TestSeed<X>s` for other packages' tests.
+4. **Store** `business/domain/<x>bus/stores/<x>db/`: `model.go` (row struct with
+   `db` tags, `toDB<X>`, `toBus<X>`, `toBus<X>s`), `filter.go` (`applyFilter`),
+   `order.go` (`orderByFields`, `orderByClause`), `<x>db.go` (named SQL through
+   `sqldb` helpers; translate `sqldb.ErrDBNotFound` to `<x>bus.ErrNotFound`).
+5. **Extension** `business/domain/<x>bus/extensions/<x>otel/`: implement every
+   `ExtBusiness` method; add a span to each (see `business-layer-extensions`).
+6. **Business tests** `<x>bus_test.go` using `dbtest.New` and `unittest.Run`.
+7. **App package** `app/domain/<x>app/`: `model.go` (JSON models with
+   `Encode`/`Decode`, `toBus*`, `toApp*`), `filter.go`, `order.go`,
+   `<x>app.go` (handlers on an unexported `app` struct), `route.go` (`Config` +
+   `Routes`). If routes act on one owned entity, add `mid.Authorize<X>` in
+   `app/sdk/mid/authorize.go` plus `set<X>`/`Get<X>` context helpers in
+   `app/sdk/mid/mid.go`.
+8. **Wiring:**
+   - `app/sdk/mux/mux.go`: add `<X>Bus` to `BusConfig`.
+   - `api/services/<service>/main.go`: construct extension, store, business.
+   - `business/sdk/dbtest/business.go`: construct it the same way; add to `BusDomain`.
+   - `api/services/<service>/build/all.go`: call `<x>app.Routes`.
+   - `app/sdk/apitest/start.go`: pass the new bus into `mux.BusConfig`.
+9. **API tests** `api/services/<service>/tests/<x>api/`: one file per endpoint,
+   table functions named by status (`create200`, `create400`, `create401`).
+
+## Verify
+
+```
+go build ./...
+go vet ./...
+make test-only
+```
+
+Then run the `layered-architecture-types` conformance checklist on the new
+files.

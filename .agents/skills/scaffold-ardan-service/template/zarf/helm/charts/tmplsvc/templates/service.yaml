@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tmplsvc-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tmplsvc.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "tmplsvc.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.ports.http }}
+      targetPort: http
+    - name: debug
+      port: {{ .Values.service.ports.debug }}
+      targetPort: debug

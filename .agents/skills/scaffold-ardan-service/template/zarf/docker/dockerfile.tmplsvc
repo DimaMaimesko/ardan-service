@@ -1,0 +1,34 @@
+# Build the Go Binary.
+FROM golang:1.27 AS build_tmplsvc
+ENV CGO_ENABLED=0
+ARG BUILD_TAG
+
+# Copy the source code into the container. The vendor folder means no
+# network access is needed to build.
+COPY . /service
+
+# Build the admin binary. It runs migrations and seeding as an init container.
+WORKDIR /service/api/tooling/admin
+RUN go build -ldflags "-X main.build=${BUILD_TAG}"
+
+# Build the service binary.
+WORKDIR /service/api/services/tmplsvc
+RUN go build -ldflags "-X main.tag=${BUILD_TAG}"
+
+
+# Run the Go Binary in Alpine. Signing keys are not baked into the image;
+# they are mounted at /service/zarf/keys or provided via TMPLSVC_AUTH_KEYS_JSON.
+FROM alpine:3.24
+ARG BUILD_DATE
+ARG BUILD_TAG
+RUN addgroup -g 1000 -S tmplsvc && \
+    adduser -u 1000 -h /service -G tmplsvc -S tmplsvc
+COPY --from=build_tmplsvc --chown=tmplsvc:tmplsvc /service/api/tooling/admin/admin /service/admin
+COPY --from=build_tmplsvc --chown=tmplsvc:tmplsvc /service/api/services/tmplsvc/tmplsvc /service/tmplsvc
+WORKDIR /service
+USER tmplsvc
+CMD ["./tmplsvc"]
+
+LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.title="tmplsvc" \
+      org.opencontainers.image.revision="${BUILD_TAG}"

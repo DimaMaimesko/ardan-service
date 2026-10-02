@@ -138,6 +138,7 @@ The project ships with a set of [Agent Skills](.agents/skills) that teach AI cod
 - **layered-architecture-types** — Enforces primitive-at-edges / strong-types-in-Business layering and the `toBus`/`fromBusResponse`/`toDB` converter pattern. Use when editing `app/*`, `business/domain/*`, or `.../stores/*db` files.
 - **business-layer-extensions** — Adds cross-cutting concerns (OTEL, logging, metrics, caching, auth) to a business domain via the `ExtBusiness`/`Extension` decorator pattern, without modifying the core `Business`.
 - **review-pr** — Service Diffguard: read-only PR review lenses (correctness, error visibility, comment truthfulness, test coverage, type/contract boundaries, simplification) across every language in the repo.
+- **scaffold-ardan-service** — Generates a new service project in this architecture from a tested template: user and product domains, in-process JWT/OPA auth, Postgres migrations, OpenTelemetry, Docker Compose, Kind and Helm.
 
 ### How to use
 
